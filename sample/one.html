@@ -1,0 +1,35 @@
+<style>
+  ul {
+    background-color: blue;
+    color: white;
+    padding: 5px 10px;
+  }
+</style>
+<html>
+  <ul>
+    <li>
+      This is a list
+    </li>
+    <li>
+      When you load /one
+    </li>
+    <li>
+      This is what happens
+    </li>
+  </ul>
+  <div>
+    <button onclick="me.setRed(event)">SET RED</button>
+  </div>
+  <button onclick="me.hi()">HI</button>
+  <template type="box" onclick="me.ok()"></template>
+</html>
+<script>
+  return {
+    hi: () => alert('hello from one'),
+    setRed: e => {
+      console.log(e);
+      e.target.style.backgroundColor = 'red';
+    },
+    ok: () => prompt('what is up my dudes?')
+  }
+</script>

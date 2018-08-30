@@ -1,0 +1,30 @@
+<style>
+  .button {
+    padding: 8px 14px;
+    background: #c00;
+    color: white;
+    font-size: 14;
+    text-align: center;
+    min-width: 100px;
+    margin: 2px 2px 1px 0px;
+    border-radius: 3px;
+    user-select: none;
+    cursor: pointer;
+    transition: background 500ms ease-in-out;
+  }
+
+  .button:hover {
+    background: #f03;
+    transition: background 500ms ease-in-out;
+  }
+
+  .button:active {
+    background: #800;
+    transition: background 50ms ease-in-out;
+  }
+</style>
+<html>
+  <div class="button" onclick="{{onclick}}">
+    {{display}}
+  </div>
+</html>
