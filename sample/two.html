@@ -15,13 +15,18 @@
   </ol>
   <h2>Three.</h2>
   <button onclick="me.hi()">HI</button>
-  <template type="button" display="template button" onclick="me.yes()"></template>
+  <template type="button" display="{me.buttonDisplay}" onclick="me.toggleButton()"></template>
 </html>
 <script>
+
+  var buttonState = false;
+  
   return {
+    buttonDisplay: 'yes',
     hi: () => alert('hi from two'),
-    yes: () => {
-      console.log('OMG yes');
+    toggleButton: () => {
+      buttonState = !buttonState;
+      me.buttonDisplay = buttonState ? 'no' : 'yes';
     }
   }
 </script>

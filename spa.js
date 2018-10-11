@@ -28,7 +28,7 @@ class Promise {
   }
 }
 
-let controller = { };
+let controller = {};
 
 const loadFile = file => {
   const p = new Promise();
@@ -88,6 +88,7 @@ const loadContents = (element, contents) => {
 
   // wrap this js in it's own scope
   let me = eval('(() => {' + js + '})()');
+  me._bindings = [];
   processChildren(element, me).then(() => p.resolve());
   return p;
 }
@@ -118,26 +119,58 @@ const processChildren = (element, ctrl) => {
   }
   if (waiting == 0) p.resolve();
 
-  for (let c = 0; c < children.length; c++){
+  for (let c = 0; c < children.length; c++) {
     let child = children[c];
-    if(child.tagName === 'TEMPLATE') {
+    if (child.tagName === 'TEMPLATE') {
       const innerHtml = child.innerHTML;
       loadPage(child.getAttribute('type')).then((type, contents) => {
         let { css, html, js } = parseContents(contents);
+
+        if (js) {
+          const parent = me;
+          me = eval('(() => {' + js + '})()');
+          me.parent = parent;
+          me.__bindings = [];
+        }
+
         for (let a = 0; a < child.attributes.length; a++) {
           let attr = child.attributes[a];
-          var patt = new RegExp('{{' + attr.name + '}}', 'gi');
-          html = html.replace(patt, attr.value);
+          var patt = new RegExp('{{' + attr.name + '}}', 'i'); //gi for global
+          var value = attr.value;
+          if (value.startsWith('{') && value.endsWith('}')) {
+            const prop = value.substr(1, value.length - 2);
+            value = eval(prop);
+            const propPath = prop.split('.');
+            const base = propPath.slice(0, propPath.length - 1).join('.');
+            const baseObject = eval(base);
+            const propName = propPath[propPath.length - 1];
+            const internalProp = '_' + propName;
+            baseObject[internalProp] = value;
+            Object.defineProperty(baseObject, propName, {
+              get: function () {
+                return baseObject[internalProp];
+              },
+              set: function (payload) {
+                baseObject[internalProp] = payload;
+                // update the DOM
+              }
+            });
+          }
+          // bad - can't just use replace bc then I can't track binding locations
+          // html = html.replace(patt, value);
+
+          // good - go through each instance of 'patt' and replace while figuring out where I was
+          while ((match = patt.exec(html)) != null) {
+            const location = match.index;
+            html = html.replace(patt, value);
+            // find out the selector path to this as well as if it's an attr or innerHTML
+          }
+
         }
         if (css) document.head.innerHTML += css;
         child.outerHTML = html
         child = children[c];
         child.innerHTML += innerHtml;
-        if (js) {
-          const parent = me;
-          me = eval('(() => {' + js + '})()');
-          me.parent = parent;
-        }
         proceed(child, me);
       });
     } else {
@@ -215,7 +248,8 @@ const parseContents = contents => {
 }
 
 const getFilenameFromHash = hash => {
-  const path = window.location.pathname;
+  let path = window.location.pathname;
+  if (!path.endsWith('/')) path += '/';
   if (!hash || hash == '/') {
     hash = document.body.getAttribute('start') || 'index';
   }
