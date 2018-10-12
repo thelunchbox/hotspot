@@ -139,13 +139,13 @@ const processChildren = (element, ctrl) => {
           var value = attr.value;
           if (value.startsWith('{') && value.endsWith('}')) {
             const prop = value.substr(1, value.length - 2);
-            value = eval(prop);
+            const actualValue = eval(prop);
             const propPath = prop.split('.');
             const base = propPath.slice(0, propPath.length - 1).join('.');
             const baseObject = eval(base);
             const propName = propPath[propPath.length - 1];
             const internalProp = '_' + propName;
-            baseObject[internalProp] = value;
+            baseObject[internalProp] = actualValue;
             Object.defineProperty(baseObject, propName, {
               get: function () {
                 return baseObject[internalProp];

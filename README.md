@@ -4,7 +4,7 @@ A simple single page application js framework
 
 ## Easy to Setup
 
-Simply add `spa.js` to the top of your `index.html` file and hotspot will automatically convert your files into a single page app!
+Simply add `spa.js` to your `index.html` file and hotspot will automatically convert your files into a single page app!
 
 ### No routes to configure
 
