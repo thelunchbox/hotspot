@@ -5,6 +5,16 @@
     padding: 5px 10px;
   }
 </style>
+<script>
+  return {
+    hi: () => alert('hello from one'),
+    setRed: e => {
+      console.log(e);
+      e.target.style.backgroundColor = 'red';
+    },
+    ok: () => prompt('what is up my dudes?')
+  }
+</script>
 <html>
   <ul>
     <li>
@@ -23,13 +33,3 @@
   <button onclick="me.hi()">HI</button>
   <template type="box" onclick="me.ok()"></template>
 </html>
-<script>
-  return {
-    hi: () => alert('hello from one'),
-    setRed: e => {
-      console.log(e);
-      e.target.style.backgroundColor = 'red';
-    },
-    ok: () => prompt('what is up my dudes?')
-  }
-</script>

@@ -1,55 +1,19 @@
-// simple homemade promise class :D
-class Promise {
-  constructor(resolve, reject) {
-    this.resolved = null;
-    this.handleResolve = resolve;
-    this.rejected = null;
-    this.handleReject = reject;
-  }
-
-  then(fn) {
-    this.handleResolve = fn;
-    if (this.resolved) this.handleResolve(...this.resolved);
-  }
-
-  catch(fn) {
-    this.handleReject = fn;
-    if (this.rejected) this.handleReject(...this.rejected);
-  }
-
-  resolve(...args) {
-    if (this.handleResolve) this.handleResolve(...args);
-    else this.resolved = [...args];
-  }
-
-  reject(...args) {
-    if (this.handleReject) this.handleReject(...args);
-    else this.rejected = [...args];
-  }
-}
-
 let controller = {};
 
+const selfClosing = 'selfClosing';
+const innerHTML = 'innerHTML';
+
 const loadFile = file => {
-  const p = new Promise();
-  const xhr = new XMLHttpRequest();
-  xhr.open("GET", file);
-  xhr.onload = () => p.resolve(xhr.responseText);
-  xhr.onerror = () => p.reject(xhr.statusText);
-  xhr.send();
-  return p;
+  return fetch(file).then(response => response.text())
 }
 
-const loadPage = hash => {
-  const p = new Promise();
+const loadPage = async hash => {
   const { page, file } = getFilenameFromHash(hash);
-  loadFile(file).then(contents => {
-    p.resolve(page, contents);
-  });
-  return p;
+  const contents = await loadFile(file);
+  return { page, contents };
 }
 
-const writeContents = (hash, contents) => {
+const writeContents = async (hash, contents) => {
   const hotspots = document.querySelectorAll('[hotspot]');
   let destination;
   let blank;
@@ -71,15 +35,13 @@ const writeContents = (hash, contents) => {
     return;
   }
   const contentspot = destination.querySelector('[content]') || destination;
-  loadContents(contentspot, contents).then(() => {
-    const last = document.querySelector('[hotspot]:not([hidden])');
-    last && last.setAttribute('hidden', '');
-    destination.removeAttribute('hidden');
-  })
+  await loadContents(contentspot, contents);
+  const last = document.querySelector('[hotspot]:not([hidden])');
+  last && last.setAttribute('hidden', '');
+  destination.removeAttribute('hidden');
 }
 
-const loadContents = (element, contents) => {
-  const p = new Promise();
+const loadContents = async (element, contents) => {
   const { css, html, js } = parseContents(contents);
   let lastCss = document.head.querySelector('[temporary]');
   if (lastCss) document.head.removeChild(lastCss);
@@ -89,17 +51,15 @@ const loadContents = (element, contents) => {
   // wrap this js in it's own scope
   let me = eval('(() => {' + js + '})()');
   me._bindings = [];
-  processChildren(element, me).then(() => p.resolve());
-  return p;
+  await processChildren(element, me);
 }
 
-const processChildren = (element, ctrl) => {
-  let p = new Promise();
+const processChildren = async (element, ctrl) => {
   var me = ctrl;
 
   const children = element.children;
   let waiting = children.length;
-  const proceed = (child, scope) => {
+  const proceed = async (child, scope) => {
     for (let a = 0; a < child.attributes.length; a++) {
       let attr = child.attributes[a];
       if (attr.name.startsWith('on')) {
@@ -110,78 +70,71 @@ const processChildren = (element, ctrl) => {
         };
       }
     }
-    processChildren(child, scope).then(() => {
-      waiting--;
-      if (waiting == 0) {
-        p.resolve();
-      }
-    });
+    await processChildren(child, scope);
+    waiting--;
+    if (waiting == 0) {
+      return;
+    }
   }
-  if (waiting == 0) p.resolve();
+  if (waiting == 0) return;
 
   for (let c = 0; c < children.length; c++) {
     let child = children[c];
     if (child.tagName === 'TEMPLATE') {
-      const innerHtml = child.innerHTML;
-      loadPage(child.getAttribute('type')).then((type, contents) => {
-        let { css, html, js } = parseContents(contents);
+      const childInnerHtml = child.innerHTML;
+      const { contents } = await loadPage(child.getAttribute('type'));
+      let { css, html, js } = parseContents(contents);
 
-        if (js) {
-          const parent = me;
-          me = eval('(() => {' + js + '})()');
-          me.parent = parent;
-          me.__bindings = [];
+      if (js) {
+        const parent = me;
+        me = eval('(() => {' + js + '})()');
+        me.parent = parent;
+        me.__bindings = [];
+      }
+
+      for (let a = 0; a < child.attributes.length; a++) {
+        let attr = child.attributes[a];
+        var patt = new RegExp('{{' + attr.name + '}}', 'i'); //gi for global
+        var value = attr.value;
+        if (value.startsWith('{') && value.endsWith('}')) {
+          const prop = value.substr(1, value.length - 2);
+          const actualValue = eval(prop);
+          const propPath = prop.split('.');
+          const base = propPath.slice(0, propPath.length - 1).join('.');
+          const baseObject = eval(base);
+          const propName = propPath[propPath.length - 1];
+          const internalProp = '_' + propName;
+          baseObject[internalProp] = actualValue;
+          Object.defineProperty(baseObject, propName, {
+            get: function () {
+              return baseObject[internalProp];
+            },
+            set: function (payload) {
+              baseObject[internalProp] = payload;
+              // update the DOM
+            }
+          });
+        }
+        // bad - can't just use replace bc then I can't track binding locations
+        // html = html.replace(patt, value);
+
+        // good - go through each instance of 'patt' and replace while figuring out where I was
+        while ((match = patt.exec(html)) != null) {
+          const location = match.index;
+          html = html.replace(patt, value);
+          // find out the selector path to this as well as if it's an attr or innerHTML
         }
 
-        for (let a = 0; a < child.attributes.length; a++) {
-          let attr = child.attributes[a];
-          var patt = new RegExp('{{' + attr.name + '}}', 'i'); //gi for global
-          var value = attr.value;
-          if (value.startsWith('{') && value.endsWith('}')) {
-            const prop = value.substr(1, value.length - 2);
-            const actualValue = eval(prop);
-            const propPath = prop.split('.');
-            const base = propPath.slice(0, propPath.length - 1).join('.');
-            const baseObject = eval(base);
-            const propName = propPath[propPath.length - 1];
-            const internalProp = '_' + propName;
-            baseObject[internalProp] = actualValue;
-            Object.defineProperty(baseObject, propName, {
-              get: function () {
-                return baseObject[internalProp];
-              },
-              set: function (payload) {
-                baseObject[internalProp] = payload;
-                // update the DOM
-              }
-            });
-          }
-          // bad - can't just use replace bc then I can't track binding locations
-          // html = html.replace(patt, value);
-
-          // good - go through each instance of 'patt' and replace while figuring out where I was
-          while ((match = patt.exec(html)) != null) {
-            const location = match.index;
-            html = html.replace(patt, value);
-            // find out the selector path to this as well as if it's an attr or innerHTML
-          }
-
-        }
-        if (css) document.head.innerHTML += css;
-        child.outerHTML = html
-        child = children[c];
-        child.innerHTML += innerHtml;
-        proceed(child, me);
-      });
+      }
+      if (css) document.head.innerHTML += css;
+      child.outerHTML = html
+      child = children[c];
+      child.innerHTML += childInnerHtml;
+      await proceed(child, me);
     } else {
-      proceed(child, me);
+      await proceed(child, me);
     }
   }
-  return p;
-}
-
-const process = (element) => {
-
 }
 
 // warning - does not work with nested tags of the same type!
@@ -233,17 +186,15 @@ const getAttribute = (contents, name) => {
 
 const parseContents = contents => {
   let css = findTag(contents, 'style');
-  if (!css) css = findTag(contents, 'link', { selfClosing: true });
+  if (!css) css = findTag(contents, 'link', { selfClosing });
   if (css) css = setAttribute(css, 'temporary', '');
 
-  let html = findTag(contents, 'html', { innerHTML: true });
-  let js = findTag(contents, 'script', { innerHTML: true });
+  const html = findTag(contents, 'html', { innerHTML }) || contents;
+  let js = findTag(contents, 'script', { innerHTML });
   if (!js) {
-    js = findTag(contents, 'script', { selfClosing: true });
-    // this isn't supported... yet
+    js = findTag(contents, 'script', { selfClosing }) || 'return {};';
   }
   console.log(css, '\n\n', html, '\n\n', js);
-  html = html || contents;
   return { css, html, js };
 }
 
@@ -256,19 +207,20 @@ const getFilenameFromHash = hash => {
   return { page: hash, file: path + hash + '.html' };
 }
 
-window.addEventListener('hashchange', e => {
-  loadPage(window.location.hash.substr(1)).then(writeContents);
+window.addEventListener('hashchange', async e => {
+  const { page, contents } = await loadPage(window.location.hash.substr(1));
+  writeContents(page, contents)
 }, false);
 
-document.addEventListener('DOMContentLoaded', e => {
+document.addEventListener('DOMContentLoaded', async e => {
   document.head.innerHTML += style;
   const hotspots = document.querySelectorAll('[hotspot]');
-  let destination;
   for (let i = 0; i < hotspots.length; i++) {
     const spot = hotspots[i];
     spot.setAttribute('hidden', '');
   }
-  loadPage(window.location.hash.substr(1)).then(writeContents);
+  const { page, contents } = await loadPage(window.location.hash.substr(1));
+  writeContents(page, contents)
 }, false);
 
 const style = `
